@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reporte Diario - EEP</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 20px; }
+        .container { max-width: 450px; margin: 0 auto; background: #ffffff; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        h2 { color: #2563eb; text-align: center; margin-top: 0; font-size: 1.3rem; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; }
+        input, select, textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.95rem; box-sizing: border-box; background-color: #fff; }
+        select:disabled { background-color: #f1f5f9; color: #475569; cursor: not-allowed; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #2563eb; }
+        
+        .activities-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+        .activity-checkbox { display: flex; align-items: center; background: #f8fafc; border: 1px solid #cbd5e1; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+        .activity-checkbox input { width: auto; margin-right: 8px; cursor: pointer; }
+        .activity-checkbox:hover { background: #f1f5f9; border-color: #2563eb; }
+
+        .btn { background-color: #2563eb; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: 700; width: 100%; font-size: 1rem; }
+        .btn:hover { background-color: #1d4ed8; }
+        .success-msg { color: #16a34a; font-weight: 600; text-align: center; margin-top: 15px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Reporte de Turno - EEP</h2>
+    <form id="workerForm" onsubmit="submitReport(event)">
+        <div class="form-group">
+            <label for="fullName">Nombre y Apellido:</label>
+            <select id="fullName" required onchange="autofillWorkerData()">
+                <option value="" disabled selected>Selecciona tu nombre...</option>
+                <option value="Keiver Hidalgo">Keiver Hidalgo</option>
+                <option value="Oswel Navas">Oswel Navas</option>
+                <option value="Joberland Suniaga">Joberland Suniaga</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="workerShift">Turno:</label>
+            <select id="workerShift" disabled>
+                <option value="AM">Turno AM (6:30 AM a 3:30 PM)</option>
+                <option value="PM">Turno PM (12:30 PM a 9:30 PM)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="workerRole">Cargo:</label>
+            <select id="workerRole" disabled>
+                <option value="multifuncional">Multifuncional</option>
+                <option value="supervisor">Supervisor</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>Actividades realizadas / Áreas:</label>
+            <div class="activities-grid">
+                <label class="activity-checkbox"><input type="checkbox" name="act" value="caja"> Caja</label>
+                <label class="activity-checkbox"><input type="checkbox" name="act" value="almacén"> Almacén</label>
+                <label class="activity-checkbox"><input type="checkbox" name="act" value="pasillo"> Pasillo</label>
+                <label class="activity-checkbox"><input type="checkbox" name="act" value="procamp"> Procamp</label>
+                <label class="activity-checkbox"><input type="checkbox" name="act" value="gourmet"> Gourmet</label>
+                <label class="activity-checkbox"><input type="checkbox" name="act" value="autopago"> Autopago</label>
+                <label class="activity-checkbox" style="grid-column: span 2; background-color: #fef3c7; border-color: #f59e0b;"><input type="checkbox" name="act" value="libre"> Libre (Día libre)</label>
+            </div>
+            <label for="extraNotes" style="font-size: 0.85rem; color: #64748b; margin-top: 8px;">Otra observación adicional:</label>
+            <input type="text" id="extraNotes" placeholder="Opcional: escribe algún detalle adicional...">
+        </div>
+
+        <button type="submit" class="btn" id="submitBtn">Enviar mi Reporte</button>
+        <div id="successMsg" class="success-msg">¡Reporte enviado con éxito a la nube! Gracias.</div>
+    </form>
+</div>
+
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxyXCgfEkW1UkvVNrRvk7SfJxy2CEjXe9wudvNdxIc99c3qnY3_a2t1-eJGl78jsQ/exec";
+
+    const workerConfig = {
+        "Keiver Hidalgo": { shift: "AM", role: "multifuncional" },
+        "Oswel Navas": { shift: "PM", role: "multifuncional" },
+        "Joberland Suniaga": { shift: "PM", role: "supervisor" }
+    };
+
+    function autofillWorkerData() {
+        const nameSelect = document.getElementById('fullName').value;
+        const shiftSelect = document.getElementById('workerShift');
+        const roleSelect = document.getElementById('workerRole');
+
+        if (workerConfig[nameSelect]) {
+            shiftSelect.value = workerConfig[nameSelect].shift;
+            roleSelect.value = workerConfig[nameSelect].role;
+        }
+    }
+
+    async function submitReport(event) {
+        event.preventDefault();
+
+        const nameVal = document.getElementById('fullName').value;
+        if (!workerConfig[nameVal]) {
+            alert('Por favor selecciona un nombre válido.');
+            return;
+        }
+
+        const checkboxes = document.querySelectorAll('input[name="act"]:checked');
+        let selectedActivities = Array.from(checkboxes).map(cb => cb.value);
+        let extraText = document.getElementById('extraNotes').value.trim();
+
+        let finalStatusText = "";
+        if (selectedActivities.length > 0) {
+            finalStatusText = selectedActivities.join(', ');
+        }
+        if (extraText !== "") {
+            finalStatusText = finalStatusText ? `${finalStatusText} / ${extraText}` : extraText;
+        }
+
+        if (finalStatusText === "") {
+            alert('Por favor selecciona al menos una actividad o indica si estás libre.');
+            return;
+        }
+
+        const newReport = {
+            fullName: nameVal,
+            workerShift: workerConfig[nameVal].shift,
+            workerRole: workerConfig[nameVal].role,
+            attendanceStatus: finalStatusText,
+            date: new Date().toISOString().split('T')[0]
+        };
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.textContent = "Enviando...";
+
+        try {
+            await fetch(SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(newReport)
+            });
+
+            document.getElementById('successMsg').style.display = 'block';
+            document.getElementById('workerForm').reset();
+            autofillWorkerData();
+
+            setTimeout(() => {
+                document.getElementById('successMsg').style.display = 'none';
+            }, 4000);
+        } catch (error) {
+            alert("Error al enviar el reporte. Verifica tu conexión.");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Enviar mi Reporte";
+        }
+    }
+</script>
+
+</body>
+</html>
