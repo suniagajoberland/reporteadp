@@ -1,226 +1,524 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panel de Supervisor - EEP</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panel de Control - Red de Sucursales EEP</title>
     <style>
-        :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --whatsapp-color: #16a34a;
-            --whatsapp-hover: #15803d;
-            --bg-color: #f8fafc;
-            --card-bg: #ffffff;
-            --text-color: #1e293b;
-            --border-color: #cbd5e1;
-        }
+      :root {
+        --primary-color: #2563eb;
+        --primary-hover: #1d4ed8;
+        --whatsapp-color: #16a34a;
+        --whatsapp-hover: #15803d;
+        --bg-color: #f8fafc;
+        --card-bg: #ffffff;
+        --text-color: #1e293b;
+        --border-color: #cbd5e1;
+      }
 
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; }
-        .container { max-width: 850px; margin: 0 auto; background: var(--card-bg); padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
-        h2 { margin-top: 0; color: var(--primary-color); text-align: center; font-size: 1.5rem; margin-bottom: 5px; }
-        .company-subtitle { text-align: center; font-size: 0.85rem; color: #64748b; margin-bottom: 25px; }
-        .form-group { margin-bottom: 15px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.9rem; }
-        input, select, textarea { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.95rem; box-sizing: border-box; }
-        fieldset { border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; margin-bottom: 20px; background-color: #f8fafc; }
-        legend { font-weight: bold; color: var(--primary-color); padding: 0 10px; }
-        .btn-sync { background-color: #0284c7; width: 100%; padding: 12px; font-size: 1rem; margin-bottom: 15px; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;}
-        .btn-sync:hover { background-color: #0369a1; }
-        .btn-whatsapp { background-color: var(--whatsapp-color); color: white; border: none; padding: 14px 18px; border-radius: 6px; cursor: pointer; font-weight: 700; font-size: 1.05rem; width: 100%; margin-top: 10px; }
-        .btn-whatsapp:hover { background-color: var(--whatsapp-hover); }
-        .worker-card { background: white; border: 1px solid var(--border-color); padding: 12px 15px; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .worker-info h4 { margin: 0 0 3px 0; color: #0f172a; font-size: 0.95rem; }
-        .worker-info p { margin: 0; font-size: 0.85rem; color: #475569; }
-        textarea.output-box { width: 100%; height: 250px; font-family: monospace; background-color: #f1f5f9; resize: vertical; white-space: pre; }
-        .success-msg { color: #16a34a; font-weight: 600; font-size: 0.85rem; margin-top: 5px; display: none; text-align: center; }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 20px;
+      }
+      .container {
+        max-width: 850px;
+        margin: 0 auto;
+        background: var(--card-bg);
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+      }
+      h2 {
+        margin-top: 0;
+        color: var(--primary-color);
+        text-align: center;
+        font-size: 1.5rem;
+        margin-bottom: 5px;
+      }
+      .company-subtitle {
+        text-align: center;
+        font-size: 0.85rem;
+        color: #64748b;
+        margin-bottom: 25px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+        font-size: 0.9rem;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        font-size: 0.95rem;
+        box-sizing: border-box;
+        background-color: #fff;
+      }
+      fieldset {
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        background-color: #f8fafc;
+      }
+      legend {
+        font-weight: bold;
+        color: var(--primary-color);
+        padding: 0 10px;
+      }
+      .btn-sync {
+        background-color: #0284c7;
+        width: 100%;
+        padding: 12px;
+        font-size: 1rem;
+        margin-bottom: 15px;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      .btn-sync:hover {
+        background-color: #0369a1;
+      }
+      .btn-whatsapp {
+        background-color: var(--whatsapp-color);
+        color: white;
+        border: none;
+        padding: 14px 18px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 1.05rem;
+        width: 100%;
+        margin-top: 10px;
+      }
+      .btn-whatsapp:hover {
+        background-color: var(--whatsapp-hover);
+      }
+      .worker-card {
+        background: white;
+        border: 1px solid var(--border-color);
+        padding: 12px 15px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .worker-info h4 {
+        margin: 0 0 3px 0;
+        color: #0f172a;
+        font-size: 0.95rem;
+      }
+      .worker-info p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #475569;
+      }
+      textarea.output-box {
+        width: 100%;
+        height: 250px;
+        font-family: monospace;
+        background-color: #f1f5f9;
+        resize: vertical;
+        white-space: pre;
+      }
+      .success-msg {
+        color: #16a34a;
+        font-weight: 600;
+        font-size: 0.85rem;
+        margin-top: 5px;
+        display: none;
+        text-align: center;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Panel de Control - Red de Sucursales EEP</h2>
+      <div class="company-subtitle">Generador de Cierre de Jornada Laboral</div>
 
-<div class="container">
-    <h2>Panel de Control - Supervisor EEP</h2>
-    <div class="company-subtitle">Generador de Cierre de Jornada Laboral</div>
-
-    <div class="form-row">
+      <div class="form-row">
         <div class="form-group">
-            <label for="reportDate">Fecha del Día:</label>
-            <input type="date" id="reportDate">
+          <label for="reportDate">Fecha del Día:</label>
+          <input type="date" id="reportDate" />
         </div>
         <div class="form-group">
-            <label for="storeName">Tienda:</label>
-            <input type="text" id="storeName" value="EEP">
+          <label for="storeSelect">Seleccionar Sucursal:</label>
+          <select id="storeSelect">
+            <option value="EEP el paraiso">EEP</option>
+            <option value="LIN la india">LIN</option>
+            <!-- Agrega aquí el resto de tus 47 sucursales -->
+          </select>
         </div>
-    </div>
+      </div>
 
-    <button type="button" class="btn-sync" id="syncBtn" onclick="syncWorkerReports()">📥 Sincronizar Reportes desde la Nube</button>
+      <button
+        type="button"
+        class="btn-sync"
+        id="syncBtn"
+        onclick="syncWorkerReports()"
+      >
+        📥 Sincronizar Reportes de esta Sucursal
+      </button>
 
-    <div class="form-group">
-        <label>Personal Registrado en la Nube:</label>
-        <div id="workersList" style="margin-bottom: 15px;">
-            <p style="color: #64748b; font-style: italic; font-size: 0.9rem;" id="emptyMsg">Haz clic en sincronizar para descargar los reportes de los teléfonos de tus compañeros.</p>
+      <div class="form-group">
+        <label>Personal Registrado en la Nube (Tienda Seleccionada):</label>
+        <div id="workersList" style="margin-bottom: 15px">
+          <p
+            style="color: #64748b; font-style: italic; font-size: 0.9rem"
+            id="emptyMsg"
+          >
+            Selecciona la sucursal, fecha y haz clic en sincronizar.
+          </p>
         </div>
-    </div>
+      </div>
 
-    <fieldset>
+      <fieldset>
         <legend>Métricas y Novedades (Autocalculadas)</legend>
         <div class="form-row">
-            <div class="form-group"><label>Presentes:</label><input type="number" id="cPresentes" value="0" min="0"></div>
-            <div class="form-group"><label>Libres:</label><input type="number" id="cLibres" value="0" min="0"></div>
+          <div class="form-group">
+            <label>Presentes:</label
+            ><input type="number" id="cPresentes" value="0" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Libres:</label
+            ><input type="number" id="cLibres" value="0" min="0" />
+          </div>
         </div>
         <div class="form-row">
-            <div class="form-group"><label>Ausentes:</label><input type="number" id="cAusentes" value="0" min="0"></div>
-            <div class="form-group"><label>Ingresos:</label><input type="number" id="cIngresos" value="0" min="0"></div>
+          <div class="form-group">
+            <label>Ausentes:</label
+            ><input type="number" id="cAusentes" value="0" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Ingresos:</label
+            ><input type="number" id="cIngresos" value="0" min="0" />
+          </div>
         </div>
         <div class="form-row">
-            <div class="form-group"><label>Vacante:</label><input type="number" id="cVacante" value="0" min="0"></div>
-            <div class="form-group"><label>Egresos:</label><input type="number" id="cEgresos" value="0" min="0"></div>
+          <div class="form-group">
+            <label>Vacante:</label
+            ><input type="number" id="cVacante" value="0" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Egresos:</label
+            ><input type="number" id="cEgresos" value="0" min="0" />
+          </div>
         </div>
         <div class="form-row">
-            <div class="form-group"><label>Vales:</label><input type="number" id="cVales" value="0" min="0"></div>
-            <div class="form-group">
-                <label for="novedadesText">Novedades:</label>
-                <input type="text" id="novedadesText" placeholder="Escriba novedades si las hay...">
-            </div>
+          <div class="form-group">
+            <label>Vales:</label
+            ><input type="number" id="cVales" value="0" min="0" />
+          </div>
+          <div class="form-group">
+            <label for="novedadesText">Novedades:</label>
+            <input
+              type="text"
+              id="novedadesText"
+              placeholder="Escriba novedades si las hay..."
+            />
+          </div>
         </div>
-    </fieldset>
+      </fieldset>
 
-    <div class="form-group">
+      <div class="form-group">
         <label for="finalOutput">Vista Previa del Mensaje:</label>
         <textarea id="finalOutput" class="output-box" readonly></textarea>
+      </div>
+
+      <button type="button" class="btn-whatsapp" onclick="sendToWhatsApp()">
+        🚀 Enviar a WhatsApp
+      </button>
+      <div id="copySuccess" class="success-msg">
+        ¡Redirigiendo a WhatsApp con éxito!
+      </div>
     </div>
 
-    <button type="button" class="btn-whatsapp" onclick="sendToWhatsApp()">🚀 Enviar a WhatsApp</button>
-    <div id="copySuccess" class="success-msg">¡Redirigiendo a WhatsApp con éxito!</div>
-</div>
+    <script>
+      const SCRIPT_URLS = [
+        "https://script.google.com/macros/s/AKfycbyITfWo8NgVpJt0ILAwk8eLhse7mC-pOaDf5lTjQTI2iBUF2OiQcH7dcN7HNsWAVzWe/exec",
+        "https://script.google.com/macros/s/AKfycbxyXCgfEkW1UkvVNrRvk7SfJxy2CEjXe9wudvNdxIc99c3qnY3_a2t1-eJGl78jsQ/exec",
+      ];
 
-<script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxyXCgfEkW1UkvVNrRvk7SfJxy2CEjXe9wudvNdxIc99c3qnY3_a2t1-eJGl78jsQ/exec";
+      const SHIFTS = ["am", "pm"];
+      const ROLES = ["supervisor", "multifuncional"];
+      const MONTHS = {
+        jan: 1,
+        feb: 2,
+        mar: 3,
+        apr: 4,
+        may: 5,
+        jun: 6,
+        jul: 7,
+        aug: 8,
+        sep: 9,
+        oct: 10,
+        nov: 11,
+        dec: 12,
+      };
 
-    document.getElementById('reportDate').valueAsDate = new Date();
-    let workers = [];
+      document.getElementById("reportDate").valueAsDate = new Date();
+      let workers = [];
+      let cloudData = [];
 
-    async function syncWorkerReports() {
-        const btn = document.getElementById('syncBtn');
+      // Las hojas devuelven la fecha en formatos distintos (2026-09-28,
+      // 2026-09-28T04:00:00.000Z o "Mon Sep 28 2026 00:00:00 GM")
+      function normalizeDate(value) {
+        if (!value) return "";
+        const raw = String(value).trim();
+        const pad = (n) => String(n).padStart(2, "0");
+
+        const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+        // "Mon Sep 28 2026 00:00:00 GM" no lo parsea Date, se lee por partes
+        const spelled = raw.match(/^\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
+        if (spelled && MONTHS[spelled[1].toLowerCase()]) {
+          return `${spelled[3]}-${pad(MONTHS[spelled[1].toLowerCase()])}-${pad(spelled[2])}`;
+        }
+
+        const parsed = new Date(raw);
+        if (isNaN(parsed.getTime())) return "";
+        return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+      }
+
+      // Una de las hojas no tiene columna storeName: los valores llegan
+      // corridos una posición y se detectan porque el turno no es AM/PM.
+      function normalizeRecord(record) {
+        const shift = String(record.workerShift || "")
+          .trim()
+          .toLowerCase();
+        const role = String(record.workerRole || "")
+          .trim()
+          .toLowerCase();
+        const shifted =
+          !record.storeName && !SHIFTS.includes(shift) && !ROLES.includes(role);
+
+        const source = shifted
+          ? {
+              date: record.date,
+              storeName: record.fullName,
+              fullName: record.workerShift,
+              workerShift: record.workerRole,
+              workerRole: record.attendanceStatus,
+              attendanceStatus: "",
+            }
+          : record;
+
+        return {
+          date: normalizeDate(source.date),
+          storeName: String(source.storeName || "").trim(),
+          fullName: String(source.fullName || "").trim(),
+          workerShift: String(source.workerShift || "")
+            .trim()
+            .toUpperCase(),
+          workerRole: String(source.workerRole || "")
+            .trim()
+            .toLowerCase(),
+          attendanceStatus: String(source.attendanceStatus || "").trim(),
+        };
+      }
+
+      function mergeReports(records) {
+        const byWorker = new Map();
+        records.forEach((w) => {
+          const key = [
+            w.date,
+            w.storeName.toLowerCase(),
+            w.fullName.toLowerCase(),
+            w.workerShift,
+          ].join("|");
+          const previous = byWorker.get(key);
+          if (!previous || (!previous.attendanceStatus && w.attendanceStatus)) {
+            byWorker.set(key, w);
+          }
+        });
+        return Array.from(byWorker.values());
+      }
+
+      function formatActivities(worker) {
+        const raw = String(worker.attendanceStatus || "").trim();
+        if (!raw) return "Sin actividad";
+        return raw
+          .split(",")
+          .map((a) => a.trim())
+          .filter(Boolean)
+          .map((a) => a.charAt(0).toUpperCase() + a.slice(1))
+          .join(", ");
+      }
+
+      // Aplica el filtro de fecha y sucursal sobre los datos descargados
+      function applyFilters() {
+        const selectedDate = document.getElementById("reportDate").value;
+        const selectedStore = document
+          .getElementById("storeSelect")
+          .value.trim()
+          .toLowerCase();
+
+        workers = cloudData.filter((w) => {
+          if (!w.date || !w.storeName) return false;
+
+          const matchDate = w.date === selectedDate;
+          const matchStore =
+            w.storeName.toLowerCase() === selectedStore ||
+            w.storeName.toLowerCase().includes(selectedStore) ||
+            selectedStore.includes(w.storeName.toLowerCase());
+
+          return matchDate && matchStore;
+        });
+
+        updateUI();
+      }
+
+      async function fetchAllReports() {
+        const sources = await Promise.all(
+          SCRIPT_URLS.map(async (url) => {
+            try {
+              const response = await fetch(url);
+              const data = await response.json();
+              return { ok: true, rows: Array.isArray(data) ? data : [] };
+            } catch (error) {
+              console.warn("No se pudo leer " + url, error);
+              return { ok: false, rows: [] };
+            }
+          }),
+        );
+
+        return {
+          connected: sources.some((s) => s.ok),
+          records: mergeReports(
+            sources.flatMap((s) => s.rows).map(normalizeRecord),
+          ),
+        };
+      }
+
+      async function syncWorkerReports() {
+        const btn = document.getElementById("syncBtn");
         btn.textContent = "Sincronizando con la nube...";
         btn.disabled = true;
 
         try {
-            const response = await fetch(SCRIPT_URL);
-            const data = await response.json();
-            
-            const selectedDate = document.getElementById('reportDate').value;
-            
-            workers = data.filter(w => {
-                if (!w.date) return false;
-                const cloudDate = String(w.date).split('T')[0].trim();
-                return cloudDate === selectedDate;
-            });
-            
-            updateUI();
+          const { connected, records } = await fetchAllReports();
+          if (!connected) throw new Error("ninguna hoja respondió");
+          cloudData = records;
+          applyFilters();
         } catch (error) {
-            console.error(error);
-            alert("No se pudieron sincronizar los datos. Revisa tu conexión o la URL del script.");
+          console.error(error);
+          alert(
+            "No se pudieron sincronizar los datos. Revisa tu conexión o la URL del script.",
+          );
         } finally {
-            btn.textContent = "📥 Sincronizar Reportes desde la Nube";
-            btn.disabled = false;
+          btn.textContent = "📥 Sincronizar Reportes de esta Sucursal";
+          btn.disabled = false;
         }
-    }
+      }
 
-    function updateUI() {
-        const listContainer = document.getElementById('workersList');
-        listContainer.innerHTML = '';
+      function updateUI() {
+        const listContainer = document.getElementById("workersList");
+        listContainer.innerHTML = "";
 
         if (workers.length === 0) {
-            listContainer.innerHTML = '<p style="color: #64748b; font-style: italic; font-size: 0.9rem;" id="emptyMsg">No hay reportes para esta fecha en la nube todavía.</p>';
-            document.getElementById('cPresentes').value = 0;
-            document.getElementById('cLibres').value = 0;
-            generateFinalMessage();
-            return;
+          const emptyText =
+            cloudData.length === 0
+              ? "Haz clic en sincronizar para descargar los reportes de la nube."
+              : "No hay reportes para esta sucursal y fecha en la nube todavía.";
+          listContainer.innerHTML = `<p style="color: #64748b; font-style: italic; font-size: 0.9rem;" id="emptyMsg">${emptyText}</p>`;
+          document.getElementById("cPresentes").value = 0;
+          document.getElementById("cLibres").value = 0;
+          generateFinalMessage();
+          return;
         }
 
         let totalPresentes = 0;
         let totalLibres = 0;
 
-        workers.forEach(w => {
-            const estado = (w.attendanceStatus || '').toLowerCase();
-            if (estado.includes('libre')) {
-                totalLibres++;
-            } else {
-                totalPresentes++;
-            }
+        workers.forEach((w) => {
+          const estado = (w.attendanceStatus || "").toLowerCase();
+          if (estado.includes("libre")) {
+            totalLibres++;
+          } else {
+            totalPresentes++;
+          }
         });
 
-        document.getElementById('cPresentes').value = totalPresentes;
-        document.getElementById('cLibres').value = totalLibres;
+        document.getElementById("cPresentes").value = totalPresentes;
+        document.getElementById("cLibres").value = totalLibres;
 
         workers.forEach((w) => {
-            const card = document.createElement('div');
-            card.className = 'worker-card';
-            card.innerHTML = `
+          const card = document.createElement("div");
+          card.className = "worker-card";
+          card.innerHTML = `
                 <div class="worker-info">
-                    <h4>${w.fullName || 'Sin Nombre'} <span style="color: var(--primary-color);">[Turno ${w.workerShift || 'N/A'}]</span></h4>
-                    <p><strong>Cargo:</strong> ${w.workerRole === 'supervisor' ? 'Supervisor' : 'Multifuncional'} | <strong>Actividad:</strong> ${w.attendanceStatus || 'Sin estado'}</p>
+                    <h4>${w.fullName || "Sin Nombre"} <span style="color: var(--primary-color);">[Turno ${w.workerShift || "N/A"}]</span></h4>
+                    <p><strong>Cargo:</strong> ${w.workerRole === "supervisor" ? "Supervisor" : "Multifuncional"} | <strong>Actividad:</strong> ${formatActivities(w)}</p>
                 </div>
             `;
-            listContainer.appendChild(card);
+          listContainer.appendChild(card);
         });
 
         generateFinalMessage();
-    }
+      }
 
-    function generateFinalMessage() {
-        const dateVal = document.getElementById('reportDate').value;
+      function shiftRoster(shift) {
+        const list = workers.filter(
+          (w) => (w.workerShift || "").toUpperCase() === shift,
+        );
+        if (list.length === 0) return "*(Sin personal registrado)*\n\n";
+        return list
+          .map((w) => {
+            const role = w.workerRole === "supervisor" ? "*supervisor* " : "";
+            return `${role}${w.fullName}: ${formatActivities(w)}\n\n`;
+          })
+          .join("");
+      }
+
+      function generateFinalMessage() {
+        const dateVal = document.getElementById("reportDate").value;
         let formattedDate = dateVal;
         if (dateVal) {
-            const parts = dateVal.split('-');
-            if (parts.length === 3) {
-                formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
-            }
+          const parts = dateVal.split("-");
+          if (parts.length === 3) {
+            formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+          }
         }
 
-        const store = document.getElementById('storeName').value.trim() || 'EEP';
-        const presentes = document.getElementById('cPresentes').value;
-        const libres = document.getElementById('cLibres').value;
-        const ausentes = document.getElementById('cAusentes').value;
-        const ingresos = document.getElementById('cIngresos').value;
-        const vacante = document.getElementById('cVacante').value;
-        const egresos = document.getElementById('cEgresos').value;
-        const vales = document.getElementById('cVales').value;
-        const novedades = document.getElementById('novedadesText').value.trim();
+        const store =
+          document.getElementById("storeSelect").value.trim() || "EEP";
+        const presentes = document.getElementById("cPresentes").value;
+        const libres = document.getElementById("cLibres").value;
+        const ausentes = document.getElementById("cAusentes").value;
+        const ingresos = document.getElementById("cIngresos").value;
+        const vacante = document.getElementById("cVacante").value;
+        const egresos = document.getElementById("cEgresos").value;
+        const vales = document.getElementById("cVales").value;
+        const novedades = document.getElementById("novedadesText").value.trim();
 
         let message = `Buenas noches, Fin de la jornada laboral\n`;
         message += `Tienda:  *${store}*\n\n`;
         message += `Día:  ${formattedDate}\n\n`;
 
         message += `*Turno AM*  6:30 AM a 3:30 PM\n\n`;
-        const amWorkers = workers.filter(w => w.workerShift === 'AM');
-        if (amWorkers.length === 0) {
-            message += `*(Sin personal registrado)*\n\n`;
-        } else {
-            amWorkers.forEach(w => {
-                if (w.workerRole === 'supervisor') {
-                    message += `*supervisor* ${w.fullName}: ${w.attendanceStatus}\n\n`;
-                } else {
-                    message += `${w.fullName}: ${w.attendanceStatus}\n\n`;
-                }
-            });
-        }
+        message += shiftRoster("AM");
 
         message += `*Turno PM*  12:30 PM a 9:30 PM\n\n`;
-        const pmWorkers = workers.filter(w => w.workerShift === 'PM');
-        if (pmWorkers.length === 0) {
-            message += `*(Sin personal registrado)*\n\n`;
-        } else {
-            pmWorkers.forEach(w => {
-                if (w.workerRole === 'supervisor') {
-                    message += `*supervisor* ${w.fullName}: ${w.attendanceStatus}\n\n`;
-                } else {
-                    message += `${w.fullName}: ${w.attendanceStatus}\n\n`;
-                }
-            });
-        }
+        message += shiftRoster("PM");
 
         message += `Presentes: ${presentes}\n`;
         message += `Libres: ${libres}\n`;
@@ -232,44 +530,64 @@
         message += `Novedades:  ${novedades}\n\n`;
         message += `Feliz Noche para Tod@s !!`;
 
-        document.getElementById('finalOutput').value = message;
-    }
+        document.getElementById("finalOutput").value = message;
+      }
 
-    ['reportDate', 'storeName', 'cPresentes', 'cLibres', 'cAusentes', 'cIngresos', 'cVacante', 'cEgresos', 'cVales', 'novedadesText'].forEach(id => {
-        document.getElementById(id).addEventListener('input', generateFinalMessage);
-        document.getElementById(id).addEventListener('change', generateFinalMessage);
-    });
+      // La sucursal y la fecha vuelven a filtrar los datos descargados
+      ["reportDate", "storeSelect"].forEach((id) => {
+        document.getElementById(id).addEventListener("change", applyFilters);
+      });
 
-    function sendToWhatsApp() {
-        const outputBox = document.getElementById('finalOutput');
+      [
+        "cPresentes",
+        "cLibres",
+        "cAusentes",
+        "cIngresos",
+        "cVacante",
+        "cEgresos",
+        "cVales",
+        "novedadesText",
+      ].forEach((id) => {
+        document
+          .getElementById(id)
+          .addEventListener("input", generateFinalMessage);
+        document
+          .getElementById(id)
+          .addEventListener("change", generateFinalMessage);
+      });
+
+      function sendToWhatsApp() {
+        const outputBox = document.getElementById("finalOutput");
         const messageText = outputBox.value.trim();
-        
-        if (messageText === '') {
-            alert('No hay información en el reporte para enviar.');
-            return;
+
+        if (messageText === "") {
+          alert("No hay información en el reporte para enviar.");
+          return;
         }
 
         navigator.clipboard.writeText(messageText).then(() => {
-            const encodedMessage = encodeURIComponent(messageText);
-            const whatsappUrl = `https://api.whatsapp.com/send?text=${encodedMessage}`;
-            window.open(whatsappUrl, '_blank');
+          const encodedMessage = encodeURIComponent(messageText);
+          const whatsappUrl = `https://api.whatsapp.com/send?text=${encodedMessage}`;
+          window.open(whatsappUrl, "_blank");
 
-            const successMsg = document.getElementById('copySuccess');
-            successMsg.style.display = 'block';
-            setTimeout(() => { successMsg.style.display = 'none'; }, 3500);
+          const successMsg = document.getElementById("copySuccess");
+          successMsg.style.display = "block";
+          setTimeout(() => {
+            successMsg.style.display = "none";
+          }, 3500);
 
-            // --- LIMPIEZA DE DATOS TRAS EL ENVÍO ---
-            workers = []; // Limpia el arreglo de trabajadores
-            document.getElementById('cAusentes').value = 0;
-            document.getElementById('cIngresos').value = 0;
-            document.getElementById('cVacante').value = 0;
-            document.getElementById('cEgresos').value = 0;
-            document.getElementById('cVales').value = 0;
-            document.getElementById('novedadesText').value = '';
-            updateUI(); // Refresca la interfaz para mostrar las tarjetas vacías
+          // Limpia los datos locales de la interfaz una vez enviado
+          workers = [];
+          cloudData = [];
+          document.getElementById("cAusentes").value = 0;
+          document.getElementById("cIngresos").value = 0;
+          document.getElementById("cVacante").value = 0;
+          document.getElementById("cEgresos").value = 0;
+          document.getElementById("cVales").value = 0;
+          document.getElementById("novedadesText").value = "";
+          updateUI();
         });
-    }
-</script>
-
-</body>
+      }
+    </script>
+  </body>
 </html>
