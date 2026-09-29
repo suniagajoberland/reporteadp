@@ -274,9 +274,18 @@
         dec: 12,
       };
 
-      document.getElementById("reportDate").valueAsDate = new Date();
       let workers = [];
       let cloudData = [];
+
+      // valueAsDate guarda la fecha en UTC, que de noche adelanta un día el
+      // input y el filtro deja de encontrar los reportes del día local.
+      function todayISO() {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      }
+
+      document.getElementById("reportDate").value = todayISO();
 
       // Las hojas devuelven la fecha en formatos distintos (2026-09-28,
       // 2026-09-28T04:00:00.000Z o "Mon Sep 28 2026 00:00:00 GM")
@@ -364,6 +373,30 @@
           .join(", ");
       }
 
+      // Arma el listado de sucursales con lo que realmente trae la nube
+      function refreshStoreOptions() {
+        const select = document.getElementById("storeSelect");
+        const current = select.value;
+        const stores = Array.from(
+          new Set(cloudData.map((w) => w.storeName).filter(Boolean)),
+        ).sort((a, b) => a.localeCompare(b, "es"));
+
+        if (stores.length === 0) return;
+
+        select.innerHTML = "";
+        stores.forEach((name) => {
+          const option = document.createElement("option");
+          option.value = name;
+          option.textContent = name;
+          select.appendChild(option);
+        });
+
+        const stillExists = stores.some(
+          (name) => name.toLowerCase() === current.toLowerCase(),
+        );
+        if (stillExists) select.value = current;
+      }
+
       // Aplica el filtro de fecha y sucursal sobre los datos descargados
       function applyFilters() {
         const selectedDate = document.getElementById("reportDate").value;
@@ -418,6 +451,7 @@
           const { connected, records } = await fetchAllReports();
           if (!connected) throw new Error("ninguna hoja respondió");
           cloudData = records;
+          refreshStoreOptions();
           applyFilters();
         } catch (error) {
           console.error(error);

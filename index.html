@@ -173,8 +173,8 @@
             <option value="" disabled selected>
               Selecciona tu sucursal...
             </option>
-            <option value="EEP el paraiso">EEP</option>
-            <option value="LIN la india">LIN</option>
+            <option value="EEP el paraiso">EEP el paraiso</option>
+            <option value="LIN la india">LIN la india</option>
             <!-- Agrega aquí el resto de tus 47 sucursales -->
           </select>
         </div>
@@ -259,16 +259,15 @@
 
     <script>
       const SCRIPT_URL =
-        "https://script.google.com/macros/s/AKfycbyITfWo8NgVpJt0ILAwk8eLhse7mC-pOaDf5lTjQTI2iBUF2OiQcH7dcN7HNsWAVzWe/exec";
+        "https://script.google.com/macros/s/AKfycbz8f--Ipco38zyS-OJaD8ZGfEdkDFZX-GInBX7rMRWSYe2CHGaF78I-_Qp7A_slfVLK/exec";
 
-      // Padrón de personal por sucursal. La clave es el value de la opción
-      // en el <select id="storeName">. Edita SOLO este bloque para actualizarlo.
-      const SUCURSALES = {
+      // Padrón base inicial por sucursal
+      let SUCURSALES = {
         "EEP el paraiso": [
-          { nombre: "Joberland Suniaga", turno: "PM", cargo: "Supervisor" },
+          { nombre: "Joberland Suniaga", turno: "PM", cargo: "supervisor" },
         ],
         "LIN la india": [
-          { nombre: "Alejandro Delgado", turno: "AM", cargo: "Supervisor" },
+          { nombre: "Alejandro Delgado", turno: "AM", cargo: "supervisor" },
         ],
       };
 
@@ -280,19 +279,59 @@
       const shiftEl = document.getElementById("workerShift");
       const roleEl = document.getElementById("workerRole");
 
-      // Pone la fecha de hoy por defecto
-      document.getElementById("date").valueAsDate = new Date();
+      // valueAsDate guarda la fecha en UTC, por lo que de noche registraba el
+      // reporte con el día siguiente.
+      function todayISO() {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      }
+
+      document.getElementById("date").value = todayISO();
+
+      // Sincroniza y extrae el personal registrado desde el Google Sheet (reports y workers)
+      async function fetchRegisteredWorkers() {
+        try {
+          const response = await fetch(SCRIPT_URL);
+          const data = await response.json();
+          
+          const reportsList = data.reports || (Array.isArray(data) ? data : []);
+          
+          reportsList.forEach(row => {
+            const tienda = String(row.storeName || "").trim();
+            const nombre = String(row.fullName || "").trim();
+            const turno = String(row.workerShift || "AM").trim().toUpperCase();
+            const cargo = String(row.workerRole || "multifuncional").trim().toLowerCase();
+
+            if (tienda && nombre) {
+              let keyFound = Object.keys(SUCURSALES).find(k => k.toLowerCase() === tienda.toLowerCase());
+              if (!keyFound) {
+                SUCURSALES[tienda] = [];
+                keyFound = tienda;
+                
+                if (!Array.from(storeNameEl.options).some(opt => opt.value.toLowerCase() === tienda.toLowerCase())) {
+                  addOption(storeNameEl, tienda, tienda);
+                }
+              }
+
+              const existe = SUCURSALES[keyFound].some(w => w.nombre.toLowerCase() === nombre.toLowerCase());
+              if (!existe) {
+                SUCURSALES[keyFound].push({ nombre: nombre, turno: turno, cargo: cargo });
+              }
+            }
+          });
+
+          renderWorkersByStore();
+        } catch (error) {
+          console.error("No se pudo sincronizar el personal histórico:", error);
+          renderWorkersByStore();
+        }
+      }
 
       function findSucursalKey(value) {
-        const target = String(value || "")
-          .trim()
-          .toLowerCase();
+        const target = String(value || "").trim().toLowerCase();
         if (!target) return null;
-        return (
-          Object.keys(SUCURSALES).find(
-            (key) => key.trim().toLowerCase() === target,
-          ) || null
-        );
+        return Object.keys(SUCURSALES).find(key => key.trim().toLowerCase() === target) || null;
       }
 
       function storeWorkers() {
@@ -300,12 +339,8 @@
         if (!key) return [];
         return SUCURSALES[key].map((w) => ({
           fullName: String(w.nombre || "").trim(),
-          workerShift: String(w.turno || "")
-            .trim()
-            .toUpperCase(),
-          workerRole: String(w.cargo || "")
-            .trim()
-            .toLowerCase(),
+          workerShift: String(w.turno || "").trim().toUpperCase(),
+          workerRole: String(w.cargo || "").trim().toLowerCase(),
         }));
       }
 
@@ -349,25 +384,20 @@
         const list = storeWorkers();
 
         if (list.length === 0) {
-          addOption(fullNameEl, "", "No hay personal cargado en esta sucursal");
+          addOption(fullNameEl, "", "No hay personal registrado en esta sucursal aún");
           fullNameEl.disabled = true;
-          rosterHintEl.textContent = "Padrón sin registros para " + store + ".";
+          rosterHintEl.textContent = "Marca la casilla de abajo para escribir tu nombre por primera vez.";
           return;
         }
 
         addOption(fullNameEl, "", "Selecciona tu nombre...");
         list.forEach((w) => addOption(fullNameEl, w.fullName, w.fullName));
         fullNameEl.disabled = false;
-        rosterHintEl.textContent =
-          list.length === 1
-            ? "1 trabajador en esta sucursal."
-            : list.length + " trabajadores en esta sucursal.";
+        rosterHintEl.textContent = list.length === 1 ? "1 trabajador disponible." : list.length + " trabajadores disponibles.";
       }
 
       function autofillWorkerData() {
-        const worker = storeWorkers().find(
-          (w) => w.fullName === fullNameEl.value,
-        );
+        const worker = storeWorkers().find((w) => w.fullName === fullNameEl.value);
         if (!worker) return;
 
         if (worker.workerShift === "AM" || worker.workerShift === "PM") {
@@ -376,18 +406,20 @@
         if (["supervisor", "multifuncional"].includes(worker.workerRole)) {
           roleEl.value = worker.workerRole;
         }
+        shiftEl.disabled = false;
+        roleEl.disabled = false;
       }
 
       storeNameEl.addEventListener("change", renderWorkersByStore);
       fullNameEl.addEventListener("change", autofillWorkerData);
       manualToggleEl.addEventListener("change", renderWorkersByStore);
-      renderWorkersByStore();
+      
+      // Llamada para cargar los datos desde Google Sheets al abrir la página
+      fetchRegisteredWorkers();
 
-      // "Libre" no se puede combinar con una actividad realizada
+      // "Libre" no se combina con actividades
       const LIBRE_VALUE = "libre";
-      const activityBoxes = Array.from(
-        document.querySelectorAll('input[name="act"]'),
-      );
+      const activityBoxes = Array.from(document.querySelectorAll('input[name="act"]'));
 
       activityBoxes.forEach((box) => {
         box.addEventListener("change", () => {
@@ -401,64 +433,68 @@
         });
       });
 
-      document
-        .getElementById("workerForm")
-        .addEventListener("submit", async function (e) {
-          e.preventDefault();
+      document.getElementById("workerForm").addEventListener("submit", async function (e) {
+        e.preventDefault();
 
-          const fullName = (
-            manualToggleEl.checked ? fullNameManualEl.value : fullNameEl.value
-          ).trim();
-          const selectedActivities = Array.from(
-            document.querySelectorAll('input[name="act"]:checked'),
-          ).map((cb) => cb.value);
+        const fullName = (manualToggleEl.checked ? fullNameManualEl.value : fullNameEl.value).trim();
+        const selectedActivities = Array.from(document.querySelectorAll('input[name="act"]:checked')).map((cb) => cb.value);
 
-          if (!fullName) {
-            alert("Selecciona tu nombre o escribe el tuyo manualmente.");
-            return;
+        if (!fullName) {
+          alert("Selecciona tu nombre o escribe el tuyo manualmente.");
+          return;
+        }
+        if (selectedActivities.length === 0) {
+          alert("Selecciona al menos una actividad realizada.");
+          return;
+        }
+
+        const btn = document.getElementById("submitBtn");
+        btn.textContent = "Enviando...";
+        btn.disabled = true;
+
+        const formData = {
+          date: document.getElementById("date").value,
+          storeName: storeNameEl.value,
+          fullName: fullName,
+          workerShift: shiftEl.value,
+          workerRole: roleEl.value,
+          attendanceStatus: selectedActivities.join(", "),
+        };
+
+        try {
+          await fetch(SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+          });
+
+          document.getElementById("successMsg").style.display = "block";
+          document.getElementById("workerForm").reset();
+          document.getElementById("date").value = todayISO();
+          
+          // Agregamos localmente el nuevo nombre a la lista para que aparezca sin recargar
+          const tiendaActual = storeNameEl.value;
+          let kFound = Object.keys(SUCURSALES).find(k => k.toLowerCase() === tiendaActual.toLowerCase());
+          if(!kFound) { SUCURSALES[tiendaActual] = []; kFound = tiendaActual; }
+          if(!SUCURSALES[kFound].some(w => w.nombre.toLowerCase() === fullName.toLowerCase())) {
+            SUCURSALES[kFound].push({ nombre: fullName, turno: shiftEl.value, cargo: roleEl.value });
           }
-          if (selectedActivities.length === 0) {
-            alert("Selecciona al menos una actividad realizada.");
-            return;
-          }
 
-          const btn = document.getElementById("submitBtn");
-          btn.textContent = "Enviando...";
-          btn.disabled = true;
+          manualToggleEl.checked = false;
+          renderWorkersByStore();
 
-          const formData = {
-            date: document.getElementById("date").value,
-            storeName: storeNameEl.value,
-            fullName: fullName,
-            workerShift: shiftEl.value,
-            workerRole: roleEl.value,
-            attendanceStatus: selectedActivities.join(", "),
-          };
-
-          try {
-            await fetch(SCRIPT_URL, {
-              method: "POST",
-              mode: "no-cors", // Evita problemas de CORS con Google Apps Script
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(formData),
-            });
-
-            document.getElementById("successMsg").style.display = "block";
-            document.getElementById("workerForm").reset();
-            document.getElementById("date").valueAsDate = new Date(); // Restablece la fecha actual
-            renderWorkersByStore();
-
-            setTimeout(() => {
-              document.getElementById("successMsg").style.display = "none";
-            }, 4000);
-          } catch (error) {
-            console.error(error);
-            alert("Hubo un error al enviar el reporte. Verifica tu conexión.");
-          } finally {
-            btn.textContent = "Enviar mi Reporte";
-            btn.disabled = false;
-          }
-        });
+          setTimeout(() => {
+            document.getElementById("successMsg").style.display = "none";
+          }, 4000);
+        } catch (error) {
+          console.error(error);
+          alert("Hubo un error al enviar el reporte. Verifica tu conexión.");
+        } finally {
+          btn.textContent = "Enviar mi Reporte";
+          btn.disabled = false;
+        }
+      });
     </script>
   </body>
 </html>
