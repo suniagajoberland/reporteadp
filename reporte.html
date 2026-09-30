@@ -364,7 +364,7 @@
 
       function formatActivities(worker) {
         const raw = String(worker.attendanceStatus || "").trim();
-        if (!raw) return "Sin actividad";
+        if (!raw) return "Libre";
         return raw
           .split(",")
           .map((a) => a.trim())
