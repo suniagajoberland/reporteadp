@@ -1,0 +1,301 @@
+/**
+ * Registro Diario de Personal EEP - Google Apps Script
+ *
+ * Reemplaza al script que esta en produccion. Se mantiene igual el formato de
+ * la respuesta (reports + workers) y se agrega "personal", que trae el nombre
+ * junto con turno, cargo y sucursal de la pestaña Personal.
+ *
+ * Que cambia respecto al script anterior:
+ *   - doGet devuelve tambien "personal" con los datos completos de la hoja.
+ *   - doPost escribe nombre, turno, cargo y sucursal en la hoja Personal, asi
+ *     el formulario puede filtrar el personal por sucursal.
+ *   - La comparacion de nombres ignora tildes, mayusculas y espacios de mas,
+ *     para que "Jose Perez" y "josé  pérez" no entren como dos personas.
+ *   - Se fija un bloqueo breve mientras se escribe, para que dos envios al
+ *     tiempo no agreguen el mismo nombre dos veces.
+ *
+ * Importante:
+ *   - Los reportes se siguen guardando en la PRIMERA pestana, igual que antes.
+ *   - La hoja Personal se busca por nombre y, si no existe, se crea sola.
+ *   - Los encabezados de la hoja se leen por texto, asi que el orden de las
+ *     columnas no importa (recomendado: Nombre | Turno | Cargo | Sucursal).
+ */
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var lock = LockService.getScriptLock();
+  var bloqueado = false;
+
+  try {
+    lock.waitLock(20000);
+    bloqueado = true;
+
+    var data = JSON.parse(e.postData.contents);
+
+    // 1. Guardar el reporte de asistencia en la primera pestaña
+    var sheetReportes = ss.getSheets()[0];
+    sheetReportes.appendRow([
+      data.date || "",
+      data.storeName || "",
+      data.fullName || "",
+      data.workerShift || "",
+      data.workerRole || "",
+      data.attendanceStatus || ""
+    ]);
+
+    // 2. Guardar los datos del trabajador en la pestaña "Personal"
+    var detalle = guardarEnPersonal(ss, data);
+
+    return ContentService.createTextOutput(JSON.stringify({
+      "result": "success",
+      "personal": detalle
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ "result": "error", "message": error.toString() }))
+           .setMimeType(ContentService.MimeType.JSON);
+
+  } finally {
+    if (bloqueado) lock.releaseLock();
+  }
+}
+
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Obtener reportes de asistencia (Pestaña principal)
+  var sheetReportes = ss.getSheets()[0];
+  var rowsRep = sheetReportes.getDataRange().getValues();
+  var reportsData = [];
+
+  for (var i = 1; i < rowsRep.length; i++) {
+    var row = rowsRep[i];
+    if (row[0] !== "") {
+      reportsData.push({
+        date: String(row[0]).split('T')[0],
+        storeName: String(row[1]).trim(),
+        fullName: String(row[2]).trim(),
+        workerShift: String(row[3]).trim(),
+        workerRole: String(row[4]).trim(),
+        attendanceStatus: String(row[5]).trim()
+      });
+    }
+  }
+
+  // Obtener lista acumulada de trabajadores (Pestaña "Personal")
+  var sheetPersonal = getHojaPersonal(ss, false);
+  var personalData = [];
+  var workersList = [];
+
+  if (sheetPersonal) {
+    var columns = leerColumnas(sheetPersonal);
+    var rowsPers = sheetPersonal.getDataRange().getValues();
+
+    for (var j = 1; j < rowsPers.length; j++) {
+      var fila = rowsPers[j];
+      var nombre = String(fila[columns.nombre] === undefined ? "" : fila[columns.nombre]).trim();
+
+      if (nombre === "") continue;
+
+      personalData.push({
+        nombre: nombre,
+        turno: normalizarTurno(fila[columns.turno]),
+        cargo: normalizarCargo(fila[columns.cargo]),
+        sucursal: normalizarTexto(fila[columns.sucursal])
+      });
+      workersList.push(nombre);
+    }
+
+    // Ordenar alfabéticamente la lista para que se vea más organizada
+    personalData.sort(function (a, b) {
+      return a.nombre.localeCompare(b.nombre, "es");
+    });
+    workersList.sort();
+  }
+
+  var responseObj = {
+    reports: reportsData,
+    personal: personalData,
+    workers: workersList
+  };
+
+  return ContentService.createTextOutput(JSON.stringify(responseObj))
+         .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Da de alta al trabajador en la pestaña Personal y guarda sus datos. Si ya
+// existe solo completa las celdas vacias (turno, cargo y sucursal), de modo que
+// nadie se agrega dos veces ni pierde lo que ya estaba escrito a mano.
+function guardarEnPersonal(ss, data) {
+  var sheet = getHojaPersonal(ss, true);
+  var columns = leerColumnas(sheet);
+  var nombre = limpiarTexto(data.fullName);
+
+  if (nombre === "") {
+    return { accion: "sin nombre", nombre: "" };
+  }
+
+  var clave = normalizarTexto(nombre);
+  var lastRow = sheet.getLastRow();
+  var fila = -1;
+
+  // La fila 1 son los encabezados, se compara desde la 2
+  if (lastRow >= 2) {
+    var nombres = sheet.getRange(2, columns.nombre + 1, lastRow - 1, 1).getValues();
+
+    for (var i = 0; i < nombres.length; i++) {
+      if (normalizarTexto(nombres[i][0]) === clave) {
+        fila = i + 2;
+        break;
+      }
+    }
+  }
+
+  var datos = {};
+  datos[columns.turno] = normalizarTurno(data.workerShift);
+  datos[columns.cargo] = normalizarCargo(data.workerRole);
+  datos[columns.sucursal] = limpiarTexto(data.storeName);
+
+  if (fila > 0) {
+    var completados = completarFila(sheet, fila, datos);
+    return {
+      accion: completados > 0 ? "actualizado" : "ya estaba",
+      nombre: nombre,
+      campos: completados
+    };
+  }
+
+  // Persona nueva: se escribe la fila completa respetando el orden de columnas
+  var ancho = Math.max(sheet.getLastColumn(), columns.sucursal + 1);
+  var nueva = [];
+
+  for (var c = 0; c < ancho; c++) nueva.push("");
+
+  nueva[columns.nombre] = nombre;
+
+  for (var indice in datos) {
+    if (datos.hasOwnProperty(indice)) nueva[Number(indice)] = datos[indice];
+  }
+
+  sheet.appendRow(nueva);
+
+  return { accion: "agregado", nombre: nombre, campos: 3 };
+}
+
+// Rellena las celdas vacias de una fila de Personal y devuelve cuantas cambio.
+// Lo que ya tiene un valor (por ejemplo escrito a mano) se respeta intacto.
+function completarFila(sheet, fila, datos) {
+  var valores = sheet.getRange(fila, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var cambios = {};
+  var cantidad = 0;
+
+  for (var indice in datos) {
+    if (!datos.hasOwnProperty(indice)) continue;
+
+    var columna = Number(indice);
+    var actual = valores[columna] === undefined ? "" : valores[columna];
+    var nuevo = datos[indice];
+
+    if (String(actual).trim() === "" && String(nuevo).trim() !== "") {
+      cambios[columna] = nuevo;
+      cantidad++;
+    }
+  }
+
+  if (cantidad === 0) return 0;
+
+  for (var columna in cambios) {
+    if (cambios.hasOwnProperty(columna)) valores[Number(columna)] = cambios[columna];
+  }
+
+  sheet.getRange(fila, 1, 1, valores.length).setValues([valores]);
+
+  return cantidad;
+}
+
+// La pestaña Personal se busca por nombre (ignora mayusculas y espacios). Si no
+// existe y crear es true, se crea con los encabezados; si no, se devuelve null
+// para nunca leer otra pestaña por error.
+function getHojaPersonal(ss, crear) {
+  var hojas = ss.getSheets();
+  var encontrada = null;
+
+  for (var i = 0; i < hojas.length; i++) {
+    if (normalizarTexto(hojas[i].getName()) === "personal") {
+      encontrada = hojas[i];
+      break;
+    }
+  }
+
+  if (!encontrada) {
+    if (!crear) return null;
+    encontrada = ss.insertSheet("Personal");
+  }
+
+  if (encontrada.getLastRow() === 0) {
+    encontrada.getRange(1, 1, 1, 4)
+      .setValues([["Nombre", "Turno", "Cargo", "Sucursal"]])
+      .setFontWeight("bold");
+  }
+
+  return encontrada;
+}
+
+// Busca cada columna por su encabezado: si la hoja tiene "Nombre, Turno, Cargo,
+// Sucursal" en ese orden funciona igual, y tambien si se reordenan. Si el
+// encabezado no existe se usa el orden por defecto: A nombre, B turno, C cargo,
+// D sucursal.
+function leerColumnas(sheet) {
+  var encabezados = ["nombre", "turno", "cargo", "sucursal"];
+  var primeraFila = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var columnas = {};
+
+  for (var h = 0; h < encabezados.length; h++) {
+    var posicion = -1;
+
+    for (var c = 0; c < primeraFila.length; c++) {
+      if (normalizarEncabezado(primeraFila[c]) === encabezados[h]) {
+        posicion = c;
+        break;
+      }
+    }
+
+    columnas[encabezados[h]] = posicion >= 0 ? posicion : h;
+  }
+
+  return columnas;
+}
+
+function normalizarEncabezado(valor) {
+  return String(valor === null || valor === undefined ? "" : valor)
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase();
+}
+
+// Para comparar: sin tildes, sin mayúsculas y sin espacios de más
+function normalizarTexto(valor) {
+  return String(valor === null || valor === undefined ? "" : valor)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+// Para guardar en la celda: sin espacios de más
+function limpiarTexto(valor) {
+  return String(valor === null || valor === undefined ? "" : valor)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizarTurno(valor) {
+  var turno = String(valor === null || valor === undefined ? "" : valor).trim().toUpperCase();
+  return (turno === "AM" || turno === "PM") ? turno : "";
+}
+
+function normalizarCargo(valor) {
+  var cargo = normalizarTexto(valor);
+  if (cargo === "supervisor") return "supervisor";
+  return cargo === "" ? "" : "multifuncional";
+}

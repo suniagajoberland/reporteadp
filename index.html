@@ -71,6 +71,18 @@
         color: #94a3b8;
         cursor: not-allowed;
       }
+      /* Turno y cargo ya guardados en la hoja Personal: se muestran fijos */
+      select.locked:disabled {
+        background-color: #ecfdf5;
+        color: #047857;
+        font-weight: 700;
+        cursor: default;
+        opacity: 1;
+        -webkit-text-fill-color: #047857;
+      }
+      label.locked-label {
+        color: #047857;
+      }
       .hint {
         margin: 6px 0 0 0;
         font-size: 0.8rem;
@@ -111,7 +123,6 @@
         font-weight: 600;
       }
       .activity-checkbox.libre {
-        grid-column: span 2;
         background-color: #fef3c7;
         border-color: #f59e0b;
       }
@@ -237,6 +248,9 @@
             <label class="activity-checkbox"
               ><input type="checkbox" name="act" value="procamp" /> Procamp</label
             >
+            <label class="activity-checkbox"
+              ><input type="checkbox" name="act" value="perecedero" /> Perecedero</label
+            >
             <label class="activity-checkbox libre"
               ><input type="checkbox" name="act" value="libre" /> Libre (día
               libre)</label
@@ -259,7 +273,7 @@
 
     <script>
       const SCRIPT_URL =
-        "https://script.google.com/macros/s/AKfycbz8f--Ipco38zyS-OJaD8ZGfEdkDFZX-GInBX7rMRWSYe2CHGaF78I-_Qp7A_slfVLK/exec";
+        "https://script.google.com/macros/s/AKfycbzFJlIBwgVUItJUcVDJlKz4Nluh2FrCO402-02LhytOjho8y7UA7Saj1hQp51JFpQs/exec";
 
       // Padrón base inicial por sucursal
       let SUCURSALES = {
@@ -278,6 +292,17 @@
       const rosterHintEl = document.getElementById("rosterHint");
       const shiftEl = document.getElementById("workerShift");
       const roleEl = document.getElementById("workerRole");
+      const shiftLabelEl = document.querySelector('label[for="workerShift"]');
+      const roleLabelEl = document.querySelector('label[for="workerRole"]');
+
+      // Texto original de las etiquetas, para poder quitar el aviso de bloqueo
+      shiftLabelEl.dataset.base = shiftLabelEl.textContent.trim();
+      roleLabelEl.dataset.base = roleLabelEl.textContent.trim();
+
+      // Padrón de la pestaña "Personal" de Google Sheets (Nombre, Turno, Cargo,
+      // Sucursal). Quien no esté ahí se agrega con la casilla de escribir el
+      // nombre a mano.
+      let PERSONAL = [];
 
       // valueAsDate guarda la fecha en UTC, por lo que de noche registraba el
       // reporte con el día siguiente.
@@ -295,6 +320,8 @@
           const response = await fetch(SCRIPT_URL);
           const data = await response.json();
           
+          PERSONAL = normalizarPersonal(data.personal || data.workers || []);
+
           const reportsList = data.reports || (Array.isArray(data) ? data : []);
           
           reportsList.forEach(row => {
@@ -328,20 +355,164 @@
         }
       }
 
+      // Acepta objetos (nombre/turno/cargo/sucursal) o textos sueltos, que es
+      // como el script devolvia el padron antes de la actualizacion
+      function normalizarPersonal(lista) {
+        if (!Array.isArray(lista)) return [];
+
+        const vistos = new Set();
+
+        return lista
+          .map((item) => {
+            if (typeof item === "string") {
+              return { nombre: item.trim(), turno: "", cargo: "", sucursal: "" };
+            }
+            const campos = normalizarCampos(item);
+            const nombre = buscarCampo(
+              campos,
+              ["nombre", "fullname", "name", "trabajador", "empleado"],
+              ["nombre", "apellido", "empleado", "trabajador"]
+            );
+            if (!nombre) return null;
+
+            return {
+              nombre,
+              turno: buscarCampo(
+                campos,
+                ["turno", "workershift", "shift"],
+                ["turno", "shift"]
+              ).toUpperCase(),
+              cargo: buscarCampo(
+                campos,
+                ["cargo", "workerrole", "role", "puesto"],
+                ["cargo", "puesto", "role"]
+              ).toLowerCase(),
+              sucursal: buscarCampo(
+                campos,
+                ["sucursal", "storename", "store", "tienda"],
+                ["sucursal", "tienda", "store"]
+              ),
+            };
+          })
+          .filter(Boolean)
+          .filter((p) => {
+            const clave = claveNombre(p.nombre);
+            if (vistos.has(clave)) return false;
+            vistos.add(clave);
+            return true;
+          })
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+      }
+
+      // Los encabezados llegan como "Nombre", "Nombre y Apellido" o
+      // "workerShift": se comparan sin espacios, sin mayusculas ni tildes
+      function normalizarCampos(fila) {
+        const campos = {};
+        if (!fila || typeof fila !== "object") return campos;
+
+        for (const clave of Object.keys(fila)) {
+          const limpio = String(clave)
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[\s_-]/g, "");
+          campos[limpio] = fila[clave];
+        }
+
+        return campos;
+      }
+
+      // Compara nombres sin tildes, mayusculas ni espacios de mas, para que
+      // "Ana  Ruiz" en la hoja no cargue dos veces el mismo nombre
+      function claveNombre(nombre) {
+        return String(nombre || "")
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, " ");
+      }
+
+      // "EEP el paraiso" en la hoja y "EEP" en el formulario son la misma
+      // sucursal, asi que se comparan los dos textos
+      function mismaSucursal(a, b) {
+        const x = claveNombre(a);
+        const y = claveNombre(b);
+        if (!x || !y) return false;
+        return x === y || x.includes(y) || y.includes(x);
+      }
+
+      function primerTexto(campos, claves) {
+        for (const clave of claves) {
+          const valor = String(campos[clave] === undefined ? "" : campos[clave]).trim();
+          if (valor) return valor;
+        }
+        return "";
+      }
+
+      // Busca el encabezado exacto y, si no aparece, uno que empiece igual:
+      // "Nombre y Apellido" o "Turno habitual" tambien sirven
+      function buscarCampo(campos, exactas, prefijos) {
+        const directo = primerTexto(campos, exactas);
+        if (directo) return directo;
+
+        for (const clave of Object.keys(campos)) {
+          if (!prefijos.some((p) => clave.indexOf(p) === 0)) continue;
+
+          const valor = String(campos[clave] === undefined ? "" : campos[clave]).trim();
+          if (valor) return valor;
+        }
+
+        return "";
+      }
+
       function findSucursalKey(value) {
         const target = String(value || "").trim().toLowerCase();
         if (!target) return null;
         return Object.keys(SUCURSALES).find(key => key.trim().toLowerCase() === target) || null;
       }
 
+      // Solo se muestra el personal de la sucursal elegida: lo que viene en la
+      // hoja Personal mas los que ya reportaron alli. Quien esta en la hoja sin
+      // sucursal asignada aparece en todas, para que no quede fuera de la lista.
       function storeWorkers() {
         const key = findSucursalKey(storeNameEl.value);
-        if (!key) return [];
-        return SUCURSALES[key].map((w) => ({
-          fullName: String(w.nombre || "").trim(),
-          workerShift: String(w.turno || "").trim().toUpperCase(),
-          workerRole: String(w.cargo || "").trim().toLowerCase(),
-        }));
+        const historico = key ? SUCURSALES[key] : [];
+        const lista = [];
+        const agregados = new Set();
+        // Quien ya esta en la hoja Personal tiene turno y cargodecidedos
+        const registrados = new Set(PERSONAL.map((p) => claveNombre(p.nombre)));
+
+        historico.forEach((w) => {
+          const nombre = String(w.nombre || "").trim();
+          if (!nombre) return;
+
+          agregados.add(claveNombre(nombre));
+          lista.push({
+            fullName: nombre,
+            workerShift: String(w.turno || "").trim().toUpperCase(),
+            workerRole: String(w.cargo || "").trim().toLowerCase(),
+            registrado: registrados.has(claveNombre(nombre)),
+          });
+        });
+
+        PERSONAL.forEach((p) => {
+          if (agregados.has(claveNombre(p.nombre))) return;
+          if (p.sucursal && !mismaSucursal(p.sucursal, storeNameEl.value)) return;
+
+          agregados.add(claveNombre(p.nombre));
+          lista.push({
+            fullName: p.nombre,
+            workerShift: String(p.turno || "").trim().toUpperCase(),
+            workerRole: String(p.cargo || "").trim().toLowerCase(),
+            // Quien esta en la hoja Personal ya tiene turno y cargo decididos:
+            // despues no se pueden cambiar desde el formulario
+            registrado: true,
+          });
+        });
+
+        return lista;
       }
 
       function addOption(select, value, text) {
@@ -352,6 +523,11 @@
       }
 
       function renderWorkersByStore() {
+        liberarCampo(shiftEl, shiftLabelEl);
+        liberarCampo(roleEl, roleLabelEl);
+        shiftLabelEl.classList.remove("locked-label");
+        roleLabelEl.classList.remove("locked-label");
+
         if (manualToggleEl.checked) {
           fullNameEl.innerHTML = "";
           fullNameEl.hidden = true;
@@ -359,8 +535,6 @@
           fullNameEl.required = false;
           fullNameManualEl.hidden = false;
           fullNameManualEl.required = true;
-          shiftEl.disabled = false;
-          roleEl.disabled = false;
           rosterHintEl.textContent = "Escribe tu nombre y apellido.";
           return;
         }
@@ -393,10 +567,38 @@
         addOption(fullNameEl, "", "Selecciona tu nombre...");
         list.forEach((w) => addOption(fullNameEl, w.fullName, w.fullName));
         fullNameEl.disabled = false;
-        rosterHintEl.textContent = list.length === 1 ? "1 trabajador disponible." : list.length + " trabajadores disponibles.";
+
+        const deLaSucursal = SUCURSALES[findSucursalKey(store) || ""] || [];
+        const sinSucursal = PERSONAL.filter((p) => !p.sucursal).length;
+        let hint = list.length === 1
+          ? "1 trabajador en esta sucursal."
+          : list.length + " trabajadores en esta sucursal.";
+        if (sinSucursal > 0 && deLaSucursal.length > 0) {
+          hint += " " + sinSucursal + " sin sucursal en la hoja, se muestran igual.";
+        }
+        rosterHintEl.textContent = hint;
+      }
+
+      // Marca un campo como bloqueado: se muestra el valor guardado en la hoja
+      // Personal y ya no se puede cambiar desde el formulario
+      function bloquearCampo(select, etiqueta) {
+        select.disabled = true;
+        select.classList.add("locked");
+        select.setAttribute("aria-readonly", "true");
+        etiqueta.textContent = etiqueta.dataset.base + " (no se modifica)";
+      }
+
+      function liberarCampo(select, etiqueta) {
+        select.disabled = false;
+        select.classList.remove("locked");
+        select.removeAttribute("aria-readonly");
+        etiqueta.textContent = etiqueta.dataset.base;
       }
 
       function autofillWorkerData() {
+        liberarCampo(shiftEl, shiftLabelEl);
+        liberarCampo(roleEl, roleLabelEl);
+
         const worker = storeWorkers().find((w) => w.fullName === fullNameEl.value);
         if (!worker) return;
 
@@ -406,8 +608,16 @@
         if (["supervisor", "multifuncional"].includes(worker.workerRole)) {
           roleEl.value = worker.workerRole;
         }
-        shiftEl.disabled = false;
-        roleEl.disabled = false;
+
+        // Ya esta en la hoja Personal con ese dato: se deja fijo
+        if (worker.registrado) {
+          if (worker.workerShift === "AM" || worker.workerShift === "PM") {
+            bloquearCampo(shiftEl, shiftLabelEl);
+          }
+          if (["supervisor", "multifuncional"].includes(worker.workerRole)) {
+            bloquearCampo(roleEl, roleLabelEl);
+          }
+        }
       }
 
       storeNameEl.addEventListener("change", renderWorkersByStore);
@@ -452,6 +662,12 @@
         btn.textContent = "Enviando...";
         btn.disabled = true;
 
+        // Se guardan antes de limpiar el formulario, para no leer los valores
+        // por defecto del reseteo
+        const tiendaActual = storeNameEl.value;
+        const turnoElegido = shiftEl.value;
+        const cargoElegido = roleEl.value;
+
         const formData = {
           date: document.getElementById("date").value,
           storeName: storeNameEl.value,
@@ -473,12 +689,15 @@
           document.getElementById("workerForm").reset();
           document.getElementById("date").value = todayISO();
           
-          // Agregamos localmente el nuevo nombre a la lista para que aparezca sin recargar
-          const tiendaActual = storeNameEl.value;
-          let kFound = Object.keys(SUCURSALES).find(k => k.toLowerCase() === tiendaActual.toLowerCase());
-          if(!kFound) { SUCURSALES[tiendaActual] = []; kFound = tiendaActual; }
-          if(!SUCURSALES[kFound].some(w => w.nombre.toLowerCase() === fullName.toLowerCase())) {
-            SUCURSALES[kFound].push({ nombre: fullName, turno: shiftEl.value, cargo: roleEl.value });
+          // El nombre ya quedo guardado en la hoja Personal, asi que turno y
+          // cargo quedan fijos de inmediato, sin esperar a recargar
+          if (!PERSONAL.some((p) => claveNombre(p.nombre) === claveNombre(fullName))) {
+            PERSONAL.push({
+              nombre: fullName,
+              turno: turnoElegido,
+              cargo: cargoElegido,
+              sucursal: tiendaActual,
+            });
           }
 
           manualToggleEl.checked = false;
