@@ -258,7 +258,6 @@
       ];
 
       const SHIFTS = ["am", "pm"];
-      const ROLES = ["supervisor", "multifuncional"];
       const MONTHS = {
         jan: 1,
         feb: 2,
@@ -276,6 +275,7 @@
 
       let workers = [];
       let cloudData = [];
+      let undatedByWorker = new Map();
 
       // valueAsDate guarda la fecha en UTC, que de noche adelanta un día el
       // input y el filtro deja de encontrar los reportes del día local.
@@ -309,16 +309,13 @@
       }
 
       // Una de las hojas no tiene columna storeName: los valores llegan
-      // corridos una posición y se detectan porque el turno no es AM/PM.
+      // corridos una posición y se detectan porque donde debería ir el cargo
+      // aparece el turno (AM/PM).
       function normalizeRecord(record) {
-        const shift = String(record.workerShift || "")
-          .trim()
-          .toLowerCase();
         const role = String(record.workerRole || "")
           .trim()
           .toLowerCase();
-        const shifted =
-          !record.storeName && !SHIFTS.includes(shift) && !ROLES.includes(role);
+        const shifted = !record.storeName && SHIFTS.includes(role);
 
         const source = shifted
           ? {
@@ -345,26 +342,59 @@
         };
       }
 
+      // Una hoja trae la fecha y la otra trae la actividad. Como la segunda no
+      // dice a qué día corresponde cada fila, se separa por fecha: los reportes
+      // con fecha van a cloudData y los que solo traen actividad quedan a la
+      // espera, para cruzarlos con el día que se está viendo.
+      function recordKey(w) {
+        return [
+          w.storeName.toLowerCase(),
+          w.fullName.toLowerCase(),
+          w.workerShift,
+        ].join("|");
+      }
+
+      function fillMissing(base, extra) {
+        return {
+          date: base.date || extra.date,
+          storeName: base.storeName || extra.storeName,
+          fullName: base.fullName || extra.fullName,
+          workerShift: base.workerShift || extra.workerShift,
+          workerRole: base.workerRole || extra.workerRole,
+          attendanceStatus: base.attendanceStatus || extra.attendanceStatus,
+        };
+      }
+
       function mergeReports(records) {
-        const byWorker = new Map();
+        const dated = new Map();
+        const undated = new Map();
+
         records.forEach((w) => {
-          const key = [
-            w.date,
-            w.storeName.toLowerCase(),
-            w.fullName.toLowerCase(),
-            w.workerShift,
-          ].join("|");
-          const previous = byWorker.get(key);
-          if (!previous || (!previous.attendanceStatus && w.attendanceStatus)) {
-            byWorker.set(key, w);
-          }
+          const key = recordKey(w);
+          const target = w.date ? dated : undated;
+          const id = w.date ? `${key}|${w.date}` : key;
+          const previous = target.get(id);
+          target.set(id, previous ? fillMissing(previous, w) : w);
         });
-        return Array.from(byWorker.values());
+
+        return {
+          dated: Array.from(dated.values()),
+          undated: Array.from(undated.values()),
+        };
+      }
+
+      // Le anexa al reporte del día la actividad que venía en la hoja sin fecha
+      function applyPendingActivity(list) {
+        list.forEach((w) => {
+          if (w.attendanceStatus) return;
+          const pending = undatedByWorker.get(recordKey(w));
+          if (pending) w.attendanceStatus = pending.attendanceStatus;
+        });
       }
 
       function formatActivities(worker) {
         const raw = String(worker.attendanceStatus || "").trim();
-        if (!raw) return "Libre";
+        if (!raw) return "Sin actividad";
         return raw
           .split(",")
           .map((a) => a.trim())
@@ -378,7 +408,12 @@
         const select = document.getElementById("storeSelect");
         const current = select.value;
         const stores = Array.from(
-          new Set(cloudData.map((w) => w.storeName).filter(Boolean)),
+          new Set(
+            cloudData
+              .concat(Array.from(undatedByWorker.values()))
+              .map((w) => w.storeName)
+              .filter(Boolean),
+          ),
         ).sort((a, b) => a.localeCompare(b, "es"));
 
         if (stores.length === 0) return;
@@ -417,6 +452,7 @@
           return matchDate && matchStore;
         });
 
+        applyPendingActivity(workers);
         updateUI();
       }
 
@@ -450,7 +486,10 @@
         try {
           const { connected, records } = await fetchAllReports();
           if (!connected) throw new Error("ninguna hoja respondió");
-          cloudData = records;
+          cloudData = records.dated;
+          undatedByWorker = new Map(
+            records.undated.map((w) => [recordKey(w), w]),
+          );
           refreshStoreOptions();
           applyFilters();
         } catch (error) {
@@ -613,6 +652,7 @@
           // Limpia los datos locales de la interfaz una vez enviado
           workers = [];
           cloudData = [];
+          undatedByWorker = new Map();
           document.getElementById("cAusentes").value = 0;
           document.getElementById("cIngresos").value = 0;
           document.getElementById("cVacante").value = 0;
