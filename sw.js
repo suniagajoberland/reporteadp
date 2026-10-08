@@ -1,11 +1,10 @@
-const CACHE_VERSION = "eep-v2";
+const CACHE_VERSION = "eep-v3";
 
 const PRECACHE_ASSETS = [
   "./",
   "./index.html",
   "./reporte.html",
   "./manifest.json",
-  "./install-banner.js",
   "./icons/adp.png",
 ];
 
