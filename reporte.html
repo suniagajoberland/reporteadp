@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Panel de Control - Red de Sucursales EEP</title>
+    <meta
+      name="description"
+      content="Panel de control de la red de sucursales EEP. Instálala en tu teléfono como una app."
+    />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" href="icons/adp.png" />
+    <link rel="apple-touch-icon" href="icons/adp.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="EEP" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+    <script src="install-banner.js" defer></script>
     <style>
       :root {
         --primary-color: #2563eb;
@@ -870,6 +884,13 @@
           document.getElementById("cVales").value = 0;
           document.getElementById("novedadesText").value = "";
           updateUI();
+        });
+      }
+    </script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("sw.js").catch(() => {});
         });
       }
     </script>

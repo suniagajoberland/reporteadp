@@ -1,0 +1,30 @@
+{
+  "name": "Reporte EEP - Registro de Asistencia",
+  "short_name": "EEP",
+  "description": "Registro de asistencia y panel de control de la red de sucursales EEP.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "./index.html",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "icons/adp.png",
+      "sizes": "898x834",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/adp.png",
+      "sizes": "898x834",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
