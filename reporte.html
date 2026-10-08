@@ -162,8 +162,8 @@
         <div class="form-group">
           <label for="storeSelect">Seleccionar Sucursal:</label>
           <select id="storeSelect">
-            <option value="EEP el paraiso">EEP</option>
-            <option value="LIN la india">LIN</option>
+            <option value="EEP el paraiso">EEP el paraiso</option>
+            <option value="LIN la india">LIN la india</option>
             <!-- Agrega aquí el resto de tus 47 sucursales -->
           </select>
         </div>
@@ -257,6 +257,11 @@
         "https://script.google.com/macros/s/AKfycbyITfWo8NgVpJt0ILAwk8eLhse7mC-pOaDf5lTjQTI2iBUF2OiQcH7dcN7HNsWAVzWe/exec",
         "https://script.google.com/macros/s/AKfycbxyXCgfEkW1UkvVNrRvk7SfJxy2CEjXe9wudvNdxIc99c3qnY3_a2t1-eJGl78jsQ/exec",
       ];
+
+      // Sucursales habilitadas: siempre aparecen en el selector, aunque la
+      // nube todavia no tenga reportes. Las que se vayan agregando en la
+      // nube se suman solas al listado.
+      const SUCURSALES_BASE = ["EEP el paraiso", "LIN la india"];
 
       const SHIFTS = ["am", "pm"];
       const MONTHS = {
@@ -520,11 +525,12 @@
       }
 
       // Arma el listado de sucursales con lo que trae la nube: el padron de
-      // personal (con su sucursal) y los reportes guardados
+      // personal (con su sucursal) y los reportes guardados. Siempre empieza
+      // con las sucursales base y agrega las nuevas que aparezcan en la nube.
       function refreshStoreOptions() {
         const select = document.getElementById("storeSelect");
         const current = select.value;
-        const stores = Array.from(
+        const encontradas = Array.from(
           new Set(
             personalData
               .map((p) => p.sucursal)
@@ -536,9 +542,15 @@
                   .filter(Boolean),
               ),
           ),
-        ).sort((a, b) => a.localeCompare(b, "es"));
+        )
+          // "EEP" o "EEP el paraiso" son la misma sucursal: no se duplica
+          .filter(
+            (name) =>
+              !SUCURSALES_BASE.some((base) => mismaSucursal(base, name)),
+          )
+          .sort((a, b) => a.localeCompare(b, "es"));
 
-        if (stores.length === 0) return;
+        const stores = SUCURSALES_BASE.concat(encontradas);
 
         select.innerHTML = "";
         stores.forEach((name) => {
