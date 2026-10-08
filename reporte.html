@@ -253,6 +253,7 @@
 
     <script>
       const SCRIPT_URLS = [
+        "https://script.google.com/macros/s/AKfycbxz4eJIJmXsmG5dHBKSncrGixNGj0iP0p8ZoewSu3lzN-SMfl_5sNdNnDakRbClgAvd/exec",
         "https://script.google.com/macros/s/AKfycbyITfWo8NgVpJt0ILAwk8eLhse7mC-pOaDf5lTjQTI2iBUF2OiQcH7dcN7HNsWAVzWe/exec",
         "https://script.google.com/macros/s/AKfycbxyXCgfEkW1UkvVNrRvk7SfJxy2CEjXe9wudvNdxIc99c3qnY3_a2t1-eJGl78jsQ/exec",
       ];
@@ -273,9 +274,114 @@
         dec: 12,
       };
 
+      // Compara nombres sin tildes, mayusculas ni espacios de mas
+      function claveNombre(nombre) {
+        return String(nombre || "")
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, " ");
+      }
+
+      // "EEP el paraiso" y "EEP" se consideran la misma sucursal
+      function mismaSucursal(a, b) {
+        const x = claveNombre(a);
+        const y = claveNombre(b);
+        if (!x || !y) return false;
+        return x === y || x.includes(y) || y.includes(x);
+      }
+
+      function primerTexto(campos, claves) {
+        for (const clave of claves) {
+          const valor = String(
+            campos[clave] === undefined ? "" : campos[clave],
+          ).trim();
+          if (valor) return valor;
+        }
+        return "";
+      }
+
+      // Normaliza cualquier formato de "personal" (objetos con nombre/turno/
+      // cargo/sucursal o textos sueltos con solo el nombre)
+      function normalizarPersonal(lista) {
+        if (!Array.isArray(lista)) return [];
+
+        const vistos = new Set();
+        return lista
+          .map((item) => {
+            if (typeof item === "string") {
+              const nombre = item.trim();
+              return nombre
+                ? { nombre, turno: "", cargo: "", sucursal: "" }
+                : null;
+            }
+            if (!item || typeof item !== "object") return null;
+
+            const campos = normalizarCampos(item);
+            const nombre = primerTexto(campos, [
+              "nombre",
+              "fullname",
+              "name",
+              "trabajador",
+              "empleado",
+            ]);
+            if (!nombre) return null;
+
+            return {
+              nombre,
+              turno: primerTexto(campos, [
+                "turno",
+                "workershift",
+                "shift",
+              ]).toUpperCase(),
+              cargo: primerTexto(campos, [
+                "cargo",
+                "workerrole",
+                "role",
+                "puesto",
+              ]).toLowerCase(),
+              sucursal: primerTexto(campos, [
+                "sucursal",
+                "storename",
+                "store",
+                "tienda",
+              ]),
+            };
+          })
+          .filter(Boolean)
+          .filter((p) => {
+            const clave = claveNombre(p.nombre);
+            if (vistos.has(clave)) return false;
+            vistos.add(clave);
+            return true;
+          })
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+      }
+
+      // Los encabezados llegan como "Nombre", "Nombre y Apellido", "workerShift",
+      // etc.: se comparan sin espacios, sin mayusculas ni tildes
+      function normalizarCampos(fila) {
+        const campos = {};
+        if (!fila || typeof fila !== "object") return campos;
+
+        for (const clave of Object.keys(fila)) {
+          const limpio = String(clave)
+            .trim()
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[\s_-]/g, "");
+          campos[limpio] = fila[clave];
+        }
+
+        return campos;
+      }
+
       let workers = [];
       let cloudData = [];
       let undatedByWorker = new Map();
+      let personalData = [];
 
       // valueAsDate guarda la fecha en UTC, que de noche adelanta un día el
       // input y el filtro deja de encontrar los reportes del día local.
@@ -315,7 +421,17 @@
         const role = String(record.workerRole || "")
           .trim()
           .toLowerCase();
-        const shifted = !record.storeName && SHIFTS.includes(role);
+        const shiftValue = String(record.workerShift || "")
+          .trim()
+          .toLowerCase();
+        // Falta la tienda y donde deberia ir el cargo aparece el turno: la hoja
+        // vieja no tiene columna storeName y los valores llegan corridos.
+        // Se exige que el turno de la fila NO parezca turno, para no confundir
+        // una fila normal que simplemente quedo sin sucursal.
+        const shifted =
+          !record.storeName &&
+          SHIFTS.includes(role) &&
+          !SHIFTS.includes(shiftValue);
 
         const source = shifted
           ? {
@@ -403,16 +519,22 @@
           .join(", ");
       }
 
-      // Arma el listado de sucursales con lo que realmente trae la nube
+      // Arma el listado de sucursales con lo que trae la nube: el padron de
+      // personal (con su sucursal) y los reportes guardados
       function refreshStoreOptions() {
         const select = document.getElementById("storeSelect");
         const current = select.value;
         const stores = Array.from(
           new Set(
-            cloudData
-              .concat(Array.from(undatedByWorker.values()))
-              .map((w) => w.storeName)
-              .filter(Boolean),
+            personalData
+              .map((p) => p.sucursal)
+              .filter(Boolean)
+              .concat(cloudData.map((w) => w.storeName).filter(Boolean))
+              .concat(
+                Array.from(undatedByWorker.values())
+                  .map((w) => w.storeName)
+                  .filter(Boolean),
+              ),
           ),
         ).sort((a, b) => a.localeCompare(b, "es"));
 
@@ -456,25 +578,43 @@
         updateUI();
       }
 
+      // Los scripts responden en dos formatos: un arreglo de reportes (hojas
+      // viejas) o un objeto {reports, personal, workers} (script actual).
+      async function fetchSource(url) {
+        try {
+          const response = await fetch(url);
+          const data = await response.json();
+
+          if (Array.isArray(data)) {
+            return { ok: true, rows: data, personal: [] };
+          }
+          if (data && typeof data === "object") {
+            return {
+              ok: true,
+              rows: Array.isArray(data.reports) ? data.reports : [],
+              personal: Array.isArray(data.personal)
+                ? data.personal
+                : Array.isArray(data.workers)
+                  ? data.workers
+                  : [],
+            };
+          }
+          return { ok: false, rows: [], personal: [] };
+        } catch (error) {
+          console.warn("No se pudo leer " + url, error);
+          return { ok: false, rows: [], personal: [] };
+        }
+      }
+
       async function fetchAllReports() {
-        const sources = await Promise.all(
-          SCRIPT_URLS.map(async (url) => {
-            try {
-              const response = await fetch(url);
-              const data = await response.json();
-              return { ok: true, rows: Array.isArray(data) ? data : [] };
-            } catch (error) {
-              console.warn("No se pudo leer " + url, error);
-              return { ok: false, rows: [] };
-            }
-          }),
-        );
+        const sources = await Promise.all(SCRIPT_URLS.map(fetchSource));
 
         return {
           connected: sources.some((s) => s.ok),
           records: mergeReports(
             sources.flatMap((s) => s.rows).map(normalizeRecord),
           ),
+          personal: normalizarPersonal(sources.flatMap((s) => s.personal)),
         };
       }
 
@@ -484,12 +624,13 @@
         btn.disabled = true;
 
         try {
-          const { connected, records } = await fetchAllReports();
+          const { connected, records, personal } = await fetchAllReports();
           if (!connected) throw new Error("ninguna hoja respondió");
           cloudData = records.dated;
           undatedByWorker = new Map(
             records.undated.map((w) => [recordKey(w), w]),
           );
+          personalData = personal;
           refreshStoreOptions();
           applyFilters();
         } catch (error) {
@@ -503,21 +644,58 @@
         }
       }
 
+      // Une el personal de la sucursal elegida (con su turno/cargo) y quienes
+      // reportaron ese día, para mostrar la lista completa con sus actividades.
+      function rosterDeLaSucursal() {
+        const seleccion = document.getElementById("storeSelect").value;
+        const lista = [];
+        const vistos = new Set();
+        const reportes = new Map();
+        workers.forEach((w) => reportes.set(claveNombre(w.fullName), w));
+
+        const agregar = (nombre, turno, cargo, reporte) => {
+          const clave = claveNombre(nombre);
+          if (!clave || vistos.has(clave)) return;
+          vistos.add(clave);
+          lista.push({
+            fullName: nombre,
+            workerShift: (turno || "").trim().toUpperCase(),
+            workerRole: (cargo || "").trim().toLowerCase(),
+            conReporte: !!reporte,
+            attendanceStatus: reporte ? reporte.attendanceStatus : "",
+          });
+        };
+
+        // El padron de Personal: se muestra quien pertenece a la sucursal (y
+        // quien aun no tiene sucursal asignada, para que no quede fuera)
+        personalData.forEach((p) => {
+          if (p.sucursal && !mismaSucursal(p.sucursal, seleccion)) return;
+          const reporte = reportes.get(claveNombre(p.nombre));
+          agregar(
+            p.nombre,
+            (reporte && reporte.workerShift) || p.turno,
+            (reporte && reporte.workerRole) || p.cargo,
+            reporte,
+          );
+        });
+
+        // Quien reporto hoy y no estaba en el padron tambien aparece
+        workers.forEach((w) =>
+          agregar(w.fullName, w.workerShift, w.workerRole, w),
+        );
+
+        const orden = (w) =>
+          w.workerShift === "AM" ? 0 : w.workerShift === "PM" ? 1 : 2;
+
+        return lista.sort(
+          (a, b) =>
+            orden(a) - orden(b) || a.fullName.localeCompare(b.fullName, "es"),
+        );
+      }
+
       function updateUI() {
         const listContainer = document.getElementById("workersList");
         listContainer.innerHTML = "";
-
-        if (workers.length === 0) {
-          const emptyText =
-            cloudData.length === 0
-              ? "Haz clic en sincronizar para descargar los reportes de la nube."
-              : "No hay reportes para esta sucursal y fecha en la nube todavía.";
-          listContainer.innerHTML = `<p style="color: #64748b; font-style: italic; font-size: 0.9rem;" id="emptyMsg">${emptyText}</p>`;
-          document.getElementById("cPresentes").value = 0;
-          document.getElementById("cLibres").value = 0;
-          generateFinalMessage();
-          return;
-        }
 
         let totalPresentes = 0;
         let totalLibres = 0;
@@ -534,13 +712,29 @@
         document.getElementById("cPresentes").value = totalPresentes;
         document.getElementById("cLibres").value = totalLibres;
 
-        workers.forEach((w) => {
+        const lista = rosterDeLaSucursal();
+
+        if (lista.length === 0) {
+          const emptyText =
+            cloudData.length === 0 && personalData.length === 0
+              ? "Haz clic en sincronizar para descargar los reportes de la nube."
+              : "No hay personal ni reportes para esta sucursal y fecha en la nube.";
+          listContainer.innerHTML = `<p style="color: #64748b; font-style: italic; font-size: 0.9rem;" id="emptyMsg">${emptyText}</p>`;
+          generateFinalMessage();
+          return;
+        }
+
+        lista.forEach((w) => {
           const card = document.createElement("div");
           card.className = "worker-card";
+          const actividad = w.conReporte
+            ? formatActivities(w)
+            : "Sin reporte en esta fecha";
+          card.style.opacity = w.conReporte ? "1" : "0.65";
           card.innerHTML = `
                 <div class="worker-info">
                     <h4>${w.fullName || "Sin Nombre"} <span style="color: var(--primary-color);">[Turno ${w.workerShift || "N/A"}]</span></h4>
-                    <p><strong>Cargo:</strong> ${w.workerRole === "supervisor" ? "Supervisor" : "Multifuncional"} | <strong>Actividad:</strong> ${formatActivities(w)}</p>
+                    <p><strong>Cargo:</strong> ${w.workerRole === "supervisor" ? "Supervisor" : "Multifuncional"} | <strong>Actividad:</strong> ${actividad}</p>
                 </div>
             `;
           listContainer.appendChild(card);
@@ -610,6 +804,10 @@
       ["reportDate", "storeSelect"].forEach((id) => {
         document.getElementById(id).addEventListener("change", applyFilters);
       });
+
+      // Descarga el padron y los reportes al abrir la pagina, para poder
+      // elegir la sucursal y ver su personal de inmediato
+      syncWorkerReports();
 
       [
         "cPresentes",

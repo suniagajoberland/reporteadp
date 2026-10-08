@@ -13,12 +13,15 @@
  *     para que "Jose Perez" y "josé  pérez" no entren como dos personas.
  *   - Se fija un bloqueo breve mientras se escribe, para que dos envios al
  *     tiempo no agreguen el mismo nombre dos veces.
+ *   - Los reportes se guardan por MES: cada mes tiene su propia pestana
+ *     (2026-10, 2026-11, ...) que se crea sola la primera vez que se usa.
  *
  * Importante:
- *   - Los reportes se siguen guardando en la PRIMERA pestana, igual que antes.
  *   - La hoja Personal se busca por nombre y, si no existe, se crea sola.
  *   - Los encabezados de la hoja se leen por texto, asi que el orden de las
  *     columnas no importa (recomendado: Nombre | Turno | Cargo | Sucursal).
+ *   - doGet sigue leyendo la primera pestana, por si quedaron reportes viejos
+ *     ahi antes del almacenamiento mensual.
  */
 
 function doPost(e) {
@@ -32,15 +35,17 @@ function doPost(e) {
 
     var data = JSON.parse(e.postData.contents);
 
-    // 1. Guardar el reporte de asistencia en la primera pestaña
-    var sheetReportes = ss.getSheets()[0];
+    // 1. Guardar el reporte de asistencia en la pestana del mes que corresponde
+    var fecha = fechaISO(data.date) || fechaISO(new Date());
+    var sheetReportes = getHojaMes(ss, fecha);
+
     sheetReportes.appendRow([
-      data.date || "",
-      data.storeName || "",
-      data.fullName || "",
-      data.workerShift || "",
-      data.workerRole || "",
-      data.attendanceStatus || ""
+      fecha,
+      limpiarTexto(data.storeName),
+      limpiarTexto(data.fullName),
+      limpiarTexto(data.workerShift),
+      limpiarTexto(data.workerRole),
+      limpiarTexto(data.attendanceStatus)
     ]);
 
     // 2. Guardar los datos del trabajador en la pestaña "Personal"
@@ -63,24 +68,8 @@ function doPost(e) {
 function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // Obtener reportes de asistencia (Pestaña principal)
-  var sheetReportes = ss.getSheets()[0];
-  var rowsRep = sheetReportes.getDataRange().getValues();
-  var reportsData = [];
-
-  for (var i = 1; i < rowsRep.length; i++) {
-    var row = rowsRep[i];
-    if (row[0] !== "") {
-      reportsData.push({
-        date: String(row[0]).split('T')[0],
-        storeName: String(row[1]).trim(),
-        fullName: String(row[2]).trim(),
-        workerShift: String(row[3]).trim(),
-        workerRole: String(row[4]).trim(),
-        attendanceStatus: String(row[5]).trim()
-      });
-    }
-  }
+  // Obtener reportes de asistencia (pestañas mensuales + primera antigua)
+  var reportsData = leerReportes(ss);
 
   // Obtener lista acumulada de trabajadores (Pestaña "Personal")
   var sheetPersonal = getHojaPersonal(ss, false);
@@ -121,6 +110,73 @@ function doGet(e) {
 
   return ContentService.createTextOutput(JSON.stringify(responseObj))
          .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Lee todos los reportes guardados: las pestanas mensuales (2026-10, 2026-11...)
+// y, por si quedaron reportes viejos, la primera pestana del libro.
+function leerReportes(ss) {
+  var hojas = ss.getSheets();
+  var salida = [];
+
+  for (var i = 0; i < hojas.length; i++) {
+    var hoja = hojas[i];
+    var nombre = hoja.getName();
+
+    if (normalizarTexto(nombre) === "personal") continue;
+
+    var esMes = esHojaMes(nombre);
+    if (!esMes && i !== 0) continue;
+
+    var filas = hoja.getDataRange().getValues();
+
+    for (var f = 1; f < filas.length; f++) {
+      var fila = filas[f];
+      var fecha = fechaISO(fila[0]);
+      if (fecha === "") continue;
+
+      salida.push({
+        date: fecha,
+        storeName: String(fila[1] === undefined ? "" : fila[1]).trim(),
+        fullName: String(fila[2] === undefined ? "" : fila[2]).trim(),
+        workerShift: String(fila[3] === undefined ? "" : fila[3]).trim().toUpperCase(),
+        workerRole: String(fila[4] === undefined ? "" : fila[4]).trim(),
+        attendanceStatus: String(fila[5] === undefined ? "" : fila[5]).trim()
+      });
+    }
+  }
+
+  return salida;
+}
+
+// Una pestana mensual tiene el nombre del mes en formato AAAA-MM: "2026-10".
+function esHojaMes(nombre) {
+  return /^\d{4}-\d{2}$/.test(String(nombre === null || nombre === undefined ? "" : nombre).trim());
+}
+
+function nombreMes(fecha) {
+  var iso = fechaISO(fecha);
+  if (iso === "") iso = fechaISO(new Date());
+  return iso.substring(0, 7);
+}
+
+// Devuelve la pestana del mes, creandola sola (con encabezados) la primera vez.
+function getHojaMes(ss, fecha) {
+  var nombre = nombreMes(fecha);
+  var hojas = ss.getSheets();
+
+  for (var i = 0; i < hojas.length; i++) {
+    if (normalizarTexto(hojas[i].getName()) === normalizarTexto(nombre)) {
+      return hojas[i];
+    }
+  }
+
+  var hoja = ss.insertSheet(nombre);
+  hoja.getRange(1, 1, 1, 6)
+    .setValues([["Fecha", "Sucursal", "Nombre", "Turno", "Cargo", "Actividad"]])
+    .setFontWeight("bold");
+  hoja.setFrozenRows(1);
+
+  return hoja;
 }
 
 // Da de alta al trabajador en la pestaña Personal y guarda sus datos. Si ya
@@ -298,4 +354,37 @@ function normalizarCargo(valor) {
   var cargo = normalizarTexto(valor);
   if (cargo === "supervisor") return "supervisor";
   return cargo === "" ? "" : "multifuncional";
+}
+
+// Convierte cualquier fecha (texto ISO, texto suelto o valor de celda) a
+// "AAAA-MM-DD" usando la zona horaria del libro, para que el dia nunca se
+// corra por la hora. Si no se entiende, devuelve cadena vacia.
+function fechaISO(valor) {
+  if (valor instanceof Date && !isNaN(valor.getTime())) {
+    return Utilities.formatDate(valor, zonaHoraria(), "yyyy-MM-dd");
+  }
+
+  var texto = String(valor === null || valor === undefined ? "" : valor).trim();
+  if (texto === "") return "";
+
+  var iso = texto.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[1] + "-" + iso[2] + "-" + iso[3];
+
+  var fecha = new Date(texto);
+  if (isNaN(fecha.getTime())) return "";
+
+  return Utilities.formatDate(fecha, zonaHoraria(), "yyyy-MM-dd");
+}
+
+var ZONA_CACHE = null;
+
+function zonaHoraria() {
+  if (!ZONA_CACHE) {
+    try {
+      ZONA_CACHE = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    } catch (error) {
+      ZONA_CACHE = Session.getScriptTimeZone();
+    }
+  }
+  return ZONA_CACHE;
 }
